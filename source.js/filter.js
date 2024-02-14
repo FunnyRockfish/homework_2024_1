@@ -1,43 +1,52 @@
+const checkIndex = (index, indexMas) => indexMas.some(([start, end]) => index >= start && index <= end);
 
-function filter(input, allowedTags) {
-    function escapeHtml(text) {
-        const map = {
-            '&': '&amp;',
-            '<': '&lt;',
-            '>': '&gt;',
-            '"': '&quot;',
-            "'": '&#39;',
-        };
-        return text.replace(/[&<>"']/g, function (m) {
-            return map[m];
-        });
-    }
+const saveText = (text, allowedTags, tagIndexes) => {
+    const map = {
+        '&': '&amp;',
+        '<': '&lt;',
+        '>': '&gt;',
+        '"': '&quot;',
+        "'": '&#39;',
+    };
+    return text.replaceAll(/[&<>"'\s]/g, (match, index) =>
+        checkIndex(index, tagIndexes) ? match : map[match] || match
+    );
+};
 
-    //Регулярное выражение для поиска тегов (придумал не сам, ещё не проходили регулярки)
-    const tagRegExp = /<\/?([a-zA-Z0-9]+)[^>]*>/g;
+const findClosingTag = (text, tagName) => {
+    const openingTagRegex = new RegExp(`<${tagName}\\b[^>]*>`, 'g');
+    const closingTagRegex = new RegExp(`</${tagName}>`, 'g');
+    const openingTags = [...text.matchAll(openingTagRegex)];
+    const closingTags = [...text.matchAll(closingTagRegex)];
+    const tagsIndex = [];
 
-    //Заменяем все теги в строке на маркеры
-    let marker = '___HTML_TAG_MARKER___';
-    let markerCount = 0;
-    let tagMap = {};
+    for (let i = 0; i < openingTags.length; i++) {
+        let openingTagIndex = openingTags[i].index;
+        let flag = false;
 
-    input = input.replace(tagRegExp, function (match, tag) {
-        if (allowedTags.includes(tag.toLowerCase())) {
-            let key = marker + markerCount++;
-            tagMap[key] = match;
-            return key;
-        } else {
-            return match; //Возвращаем тег без изменений
+        for (let j = 0; j < closingTags.length; j++) {
+            let closingTagIndex = closingTags[j].index;
+
+            if (closingTagIndex > openingTagIndex) {
+                let openingTagLength = openingTags[i][0].length;
+                tagsIndex.push(openingTagIndex, closingTagIndex + openingTagLength);
+                flag = true;
+                break;
+            }
         }
-    });
-
-    //Экранируем оставшийся текст
-    input = escapeHtml(input);
-
-    //Заменяем маркеры обратно на теги
-    for (let key in tagMap) {
-        input = input.replace(key, tagMap[key]);
+        if (!flag) {
+            tagsIndex.push(openingTagIndex, text.length);
+        }
     }
+    return tagsIndex;
+};
 
-    return input;
-}
+const filter = (input, allowedTags) => {
+    const tagRegExp = /<\/?([a-zA-Z0-9]+)[^>]*>/g;
+    const matches = [...input.matchAll(tagRegExp)];
+    const tagsMas = matches
+        .map(match => match[0].substring(1, match[0].length - 1))
+        .filter(tag => allowedTags.includes(tag))
+        .map(match => findClosingTag(input, match));
+    return saveText(input, allowedTags, tagsMas);
+};
